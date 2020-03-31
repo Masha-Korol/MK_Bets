@@ -1,10 +1,22 @@
-package com.example.stavki.entities.controllers;
-//oooooooooo****
+package com.example.stavki.controllers;
+
+//import io.swagger.annotations.Api;
+//import io.swagger.annotations.ApiOperation;
+
 
 import java.util.List;
+import java.util.stream.Collectors;
+
+// tag::hateoas-imports[]
+import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.*;
 
 import com.example.stavki.entities.Client;
-import com.example.stavki.entities.repository.ClientRepository;
+import com.example.stavki.repos.ClientRepository;
+import org.springframework.hateoas.CollectionModel;
+import org.springframework.hateoas.EntityModel;
+// end::hateoas-imports[]
+
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -12,53 +24,85 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
+
+//ResponseEntity extends HttpEntity
+//Used to return value from controller method
+
 @RestController
-class ClientController {
+public class ClientController {
 
     private final ClientRepository repository;
+
+    private ClientService clientService;
 
     ClientController(ClientRepository repository) {
         this.repository = repository;
     }
 
-    // Aggregate root
-
     @GetMapping("/clients")
-    List<Client> all() {
-        return repository.findAll();
+    CollectionModel<EntityModel<Client>> all() {
+
+        List<EntityModel<Client>> clients = repository.findAll().stream()
+                .map(client -> new EntityModel<>(client,
+                        linkTo(methodOn(ClientController.class).one(client.getId())).withSelfRel(),
+                        linkTo(methodOn(ClientController.class).all()).withRel("clients")))
+                .collect(Collectors.toList());
+
+        return new CollectionModel<>(clients, linkTo(methodOn(ClientController.class).all()).withSelfRel());
     }
 
+    //вместо предыдущего метода
+    //@ApiOperation("Get the list of clients")
+    @GetMapping("/clients")
+    public ResponseEntity<List<Client>> getListClient() {
+        return ResponseEntity.ok(clientService.getAll());
+    }
+
+    //ok - status
+    //@ApiOperation("Add new client");
     @PostMapping("/clients")
-    Client newClients(@RequestBody Client newClient) {
-        return repository.save(newClient);
+    ResponseEntity<Object> newClient(@RequestBody Client newClient)
+    {
+        clientService.addClient(newClient);
+        return ResponseEntity.ok(newClient);
     }
 
-    // Single item
-
+    //@ApiOperation("Get client");
     @GetMapping("/clients/{id}")
-    Client one(@PathVariable Long id) {
+    EntityModel<Client> one(@PathVariable Long id) {
 
-        return repository.findById(id)
+        Client client = repository.findById(id)
                 .orElseThrow(() -> new ClientNotFoundException(id));
+
+        return new EntityModel<>(client,
+                linkTo(methodOn(ClientController.class).one(id)).withSelfRel(),
+                linkTo(methodOn(ClientController.class).all()).withRel("clients"));
     }
 
-    @PutMapping("/employees/{id}")
+
+    /*@PutMapping("/clients/{id}")
     Client replaceClient(@RequestBody Client newClient, @PathVariable Long id) {
 
         return repository.findById(id)
                 .map(client -> {
+                    client.setCurrent(newClient.getCurrent());
+                    client.setHistory(newClient.getHistory());
+                    client.setMoney(newClient.getMoney());
                     client.setName(newClient.getName());
-                    //client.setRole(newClient.getRole());
+
                     return repository.save(client);
                 })
                 .orElseGet(() -> {
                     newClient.setId(id);
                     return repository.save(newClient);
                 });
-    }
+    }*/
 
+    //@ApiOperation("Delete client");
     @DeleteMapping("/clients/{id}")
-    void deleteClient(@PathVariable Long id) {
-        repository.deleteById(id);
+    ResponseEntity deleteClient(@PathVariable Long id)
+    {
+        clientService.delete(id);
+        return ResponseEntity.ok().build();
     }
 }
